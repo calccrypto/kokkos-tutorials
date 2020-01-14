@@ -48,6 +48,7 @@
 #include <sys/time.h>
 
 #include <Kokkos_Core.hpp>
+#include <sicm_low.h>
 
 void checkSizes( int &N, int &M, int &S, int &nrepeat );
 
@@ -89,15 +90,38 @@ int main( int argc, char* argv[] )
   // Check sizes.
   checkSizes( N, M, S, nrepeat );
 
+  sicm_device_list devs = sicm_init();
+  sicm_device_list use;
+  use.devices = &devs.devices[0];
+  use.count = 1;
+
   Kokkos::initialize( argc, argv );
   {
-
   // Allocate y, x vectors and Matrix A on device.
-  typedef Kokkos::View<double*>   ViewVectorType;
-  typedef Kokkos::View<double**>  ViewMatrixType;
+  typedef Kokkos::View<double*
+                       #if SICM
+                       , Kokkos::SICMSpace
+                       #endif
+                       >   ViewVectorType;
+  typedef Kokkos::View<double**
+                       #if SICM
+                       , Kokkos::SICMSpace
+                       #endif
+                       >  ViewMatrixType;
+
+  #if SICM
+  Kokkos::SICMSpace m(&use);
+  auto memspace = Kokkos::view_alloc("SICM", m );
+
+  ViewVectorType y( memspace, N );
+  ViewVectorType x( memspace, M );
+  ViewMatrixType A( memspace, N, M );
+  #else
   ViewVectorType y( "y", N );
   ViewVectorType x( "x", M );
   ViewMatrixType A( "A", N, M );
+  #endif
+
 
   // Initialize y vector on host.
   for ( int i = 0; i < N; ++i ) {
@@ -167,6 +191,7 @@ int main( int argc, char* argv[] )
   }
   Kokkos::finalize();
 
+  sicm_fini();
   return 0;
 }
 
